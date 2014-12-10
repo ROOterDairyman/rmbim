@@ -55,6 +55,7 @@ mbim_device_caps_response(void *buffer, int len)
 	deviceid = mbim_get_string(&caps->deviceid, buffer);
 	firmwareinfo = mbim_get_string(&caps->firmwareinfo, buffer);
 	hardwareinfo = mbim_get_string(&caps->hardwareinfo, buffer);
+	customclass = mbim_get_string(&caps->customdataclass, buffer);
 
 	printf("  devicetype: %04X - %s\n", le32toh(caps->devicetype),
 		mbim_enum_string(mbim_device_type_values, le32toh(caps->devicetype)));
@@ -69,6 +70,7 @@ mbim_device_caps_response(void *buffer, int len)
 	printf("  deviceid: %s\n", deviceid);
 	printf("  firmwareinfo: %s\n", firmwareinfo);
 	printf("  hardwareinfo: %s\n", hardwareinfo);
+	printf("  customdataclass: %s\n", customclass);
 
 	return 0;
 }
