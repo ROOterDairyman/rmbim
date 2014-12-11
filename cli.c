@@ -45,7 +45,7 @@ static int
 mbim_device_caps_response(void *buffer, int len)
 {
 	struct mbim_basic_connect_device_caps_r *caps = (struct mbim_basic_connect_device_caps_r *) buffer;
-	char *deviceid, *firmwareinfo, *hardwareinfo;
+	char *deviceid, *firmwareinfo, *hardwareinfo, *customclass;
 
 	if (len < sizeof(struct mbim_basic_connect_device_caps_r)) {
 		fprintf(stderr, "message not long enough\n");
