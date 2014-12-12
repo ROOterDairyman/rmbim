@@ -42,6 +42,21 @@ static int _argc;
 static char **_argv;
 
 static int
+mbim_signal_response(void *buffer, int len)
+{
+	struct mbim_basic_connect_signal_state_r *caps = (struct mbim_basic_connect_signal_state_r *) buffer;
+
+	if (len < sizeof(struct mbim_basic_connect_signal_state_r)) {
+		fprintf(stderr, "message not long enough\n");
+		return -1;
+	}
+
+	printf("  rssi: %d\n", le32toh(caps->rssi));
+
+	return 0;
+}
+
+static int
 mbim_device_caps_response(void *buffer, int len)
 {
 	struct mbim_basic_connect_device_caps_r *caps = (struct mbim_basic_connect_device_caps_r *) buffer;
@@ -351,6 +366,14 @@ mbim_disconnect_request(void)
 	return mbim_send_command_msg();
 }
 
+static int
+mbim_signal_request(void)
+{
+	mbim_setup_command_msg(basic_connect, MBIM_MESSAGE_COMMAND_TYPE_QUERY, MBIM_CMD_BASIC_CONNECT_SIGNAL_STATE, 0);
+
+	return mbim_send_command_msg();
+}
+
 static char*
 mbim_pin_sanitize(char *pin)
 {
@@ -411,6 +434,7 @@ static struct mbim_handler handlers[] = {
 	{ "connect", 0, mbim_connect_request, mbim_connect_response },
 	{ "disconnect", 0, mbim_disconnect_request, mbim_connect_response },
 	{ "config", 0, mbim_config_request, mbim_config_response },
+	{ "signal", 0, mbim_signal_request, mbim_signal_response },
 };
 
 static int
