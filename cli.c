@@ -152,7 +152,7 @@ mbim_subscriber_response(void *buffer, int len)
 {
 	struct mbim_basic_connect_subscriber_ready_status_r *state = (struct mbim_basic_connect_subscriber_ready_status_r *) buffer;
 	char *subscriberid, *simiccid;
-	int nr;
+//	int nr;
 
 	if (len < sizeof(struct mbim_basic_connect_subscriber_ready_status_r)) {
 		fprintf(stderr, "message not long enough\n");
