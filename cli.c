@@ -237,17 +237,18 @@ mbim_config_response(void *buffer, int len)
 	struct mbim_basic_connect_ip_configuration_r *ip = (struct mbim_basic_connect_ip_configuration_r *) buffer;
 	char ipv4[16];
 	int i;
-
+printf("    start config response\n");
 	if (len < sizeof(struct mbim_basic_connect_ip_configuration_r)) {
 		fprintf(stderr, "message not long enough\n");
 		return -1;
 	}
-
+printf("    1\n");
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_ADDRESS)
 		for (i = 0; i < le32toh(ip->ipv4addresscount); i++) {
 			mbim_get_ipv4(buffer, ipv4, ip->ipv4address + (i * 4));
 			printf("  ipv4address: %s\n", ipv4);
 		}
+printf("    2\n");
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_DNS) {
 		mbim_get_ipv4(buffer, ipv4, ip->ipv4gateway);
 		printf("  ipv4gateway: %s\n", ipv4);
