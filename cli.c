@@ -168,13 +168,13 @@ mbim_subscriber_response(void *buffer, int len)
 	printf("  subscriberid: %s\n", subscriberid);
 	if (le32toh(state->readyinfo) & MBIM_READY_INFO_FLAG_PROTECT_UNIQUE_ID)
 		printf("  dont display subscriberID: 1\n");
-	printf("  line 1\n");
-	for (nr = 0; nr < le32toh(state->telephonenumberscount); nr++) {
+
+/*	for (nr = 0; nr < le32toh(state->telephonenumberscount); nr++) {
 		struct mbim_string *str = buffer + le32toh(state->telephonenumbers) + (nr * sizeof(struct mbim_string));
 		char *number = mbim_get_string(str, buffer);
 		printf("  number: %s\n", number);
-	}
-	printf("  line 2\n");
+	} */
+
 	if (MBIM_SUBSCRIBER_READY_STATE_INITIALIZED == le32toh(state->readystate))
 		return 0;
 
