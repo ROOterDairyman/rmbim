@@ -169,11 +169,11 @@ mbim_subscriber_response(void *buffer, int len)
 	if (le32toh(state->readyinfo) & MBIM_READY_INFO_FLAG_PROTECT_UNIQUE_ID)
 		printf("  dont display subscriberID: 1\n");
 	printf("  telenumcnt: %d\n", le32toh(state->telephonenumberscount));
-/*	for (nr = 0; nr < le32toh(state->telephonenumberscount); nr++) {
-		struct mbim_string *str = buffer + le32toh(state->telephonenumbers) + (nr * sizeof(struct mbim_string));
+	for (nr = 0; nr < le32toh(state->telephonenumberscount); nr++) {
+		struct mbim_string *str = (void *)&state->telephonenumbers + (nr * sizeof(struct mbim_string));
 		char *number = mbim_get_string(str, buffer);
 		printf("  number: %s\n", number);
-	} */
+	} 
 
 	if (MBIM_SUBSCRIBER_READY_STATE_INITIALIZED == le32toh(state->readystate))
 		return 0;
@@ -235,8 +235,9 @@ static int
 mbim_config_response(void *buffer, int len)
 {
 	struct mbim_basic_connect_ip_configuration_r *ip = (struct mbim_basic_connect_ip_configuration_r *) buffer;
-	char ipv4[16];
+	char out[40];
 	int i;
+	uint32_t offset;
 printf("    start config response\n");
 	if (len < sizeof(struct mbim_basic_connect_ip_configuration_r)) {
 		fprintf(stderr, "message not long enough\n");
@@ -245,23 +246,40 @@ printf("    start config response\n");
 printf("    1\n");
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_ADDRESS)
 		for (i = 0; i < le32toh(ip->ipv4addresscount); i++) {
-			mbim_get_ipv4(buffer, ipv4, ip->ipv4address + (i * 4));
-			printf("  ipv4address: %s\n", ipv4);
+			offset = le32toh(ip->ipv4address) + (i * 4);
+			mbim_get_ipv4(buffer, out, 4 + offset);
+			printf("  ipv4address: %s/%d\n", out, mbim_get_int(buffer, offset));
 		}
 printf("    2\n");
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_DNS) {
-		mbim_get_ipv4(buffer, ipv4, ip->ipv4gateway);
-		printf("  ipv4gateway: %s\n", ipv4);
+		mbim_get_ipv4(buffer, out, le32toh(ip->ipv4gateway));
+		printf("  ipv4gateway: %s\n", out);
 	}
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_MTU)
 		printf("  ipv4mtu: %d\n", le32toh(ip->ipv4mtu));
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_DNS)
 		for (i = 0; i < le32toh(ip->ipv4dnsservercount); i++) {
-			mbim_get_ipv4(buffer, ipv4, ip->ipv4dnsserver + (i * 4));
-			printf("  ipv4dnsserver: %s\n", ipv4);
+			mbim_get_ipv4(buffer, out, le32toh(ip->ipv4dnsserver) + (i * 4));
+			printf("  ipv4dnsserver: %s\n", out);
 		}
 
-	printf("  ipv6configurationavailable: %04X\n", le32toh(ip->ipv6configurationavailable));
+	if (le32toh(ip->ipv6configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_ADDRESS)
+		for (i = 0; i < le32toh(ip->ipv6addresscount); i++) {
+			offset = le32toh(ip->ipv6address) + (i * 16);
+			mbim_get_ipv6(buffer, out, 4 + offset);
+			printf("  ipv6address: %s/%d\n", out, mbim_get_int(buffer, offset));
+		}
+	if (le32toh(ip->ipv6configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_DNS) {
+		mbim_get_ipv6(buffer, out, le32toh(ip->ipv6gateway));
+		printf("  ipv6gateway: %s\n", out);
+	}
+	if (le32toh(ip->ipv6configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_MTU)
+		printf("  ipv6mtu: %d\n", le32toh(ip->ipv6mtu));
+	if (le32toh(ip->ipv6configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_DNS)
+		for (i = 0; i < le32toh(ip->ipv6dnsservercount); i++) {
+			mbim_get_ipv6(buffer, out, le32toh(ip->ipv6dnsserver) + (i * 16));
+			printf("  ipv6dnsserver: %s\n", out);
+		}
 
 	return 0;
 }
@@ -326,6 +344,7 @@ mbim_detach_request(void)
 static int
 mbim_connect_request(void)
 {
+	char *apn;
 	struct mbim_basic_connect_connect_s *c =
 		(struct mbim_basic_connect_connect_s *) mbim_setup_command_msg(basic_connect,
 			MBIM_MESSAGE_COMMAND_TYPE_SET, MBIM_CMD_BASIC_CONNECT_CONNECT,
@@ -334,8 +353,22 @@ mbim_connect_request(void)
 	c->activationcommand = htole32(MBIM_ACTIVATION_COMMAND_ACTIVATE);
 	c->iptype = htole32(MBIM_CONTEXT_IP_TYPE_DEFAULT);
 	memcpy(c->contexttype, uuid_context_type_internet, 16);
-	if (_argc > 0)
-		mbim_encode_string(&c->accessstring, *_argv);
+	if (_argc > 0) {
+		apn = index(*_argv, ':');
+		if (!apn) {
+			apn = *_argv;
+		} else {
+			apn[0] = 0;
+			apn++;
+			if (!strcmp(*_argv, "ipv4"))
+				c->iptype = htole32(MBIM_CONTEXT_IP_TYPE_IPV4);
+			else if (!strcmp(*_argv, "ipv6"))
+				c->iptype = htole32(MBIM_CONTEXT_IP_TYPE_IPV6);
+			else if (!strcmp(*_argv, "ipv4v6"))
+				c->iptype = htole32(MBIM_CONTEXT_IP_TYPE_IPV4V6);
+		}
+		mbim_encode_string(&c->accessstring, apn);
+	}
 	if (_argc > 3) {
 		if (!strcmp(_argv[1], "pap"))
 			c->authprotocol = htole32(MBIM_AUTH_PROTOCOL_PAP);

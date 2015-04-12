@@ -76,7 +76,7 @@ mbim_recv(struct uloop_fd *u, unsigned int events)
 {
 	ssize_t cnt = read(u->fd, mbim_buffer, MBIM_BUFFER_SIZE);
 	struct mbim_message_header *hdr = (struct mbim_message_header *) mbim_buffer;
-	struct command_message *msg = (struct command_message *) mbim_buffer;
+	struct command_done_message *msg = (struct command_done_message *) (hdr + 1);
 	int i;
 
 	if (cnt < 0)
@@ -105,7 +105,14 @@ mbim_recv(struct uloop_fd *u, unsigned int events)
 			mbim_send_close_msg();
 		break;
 	case MBIM_MESSAGE_TYPE_COMMAND_DONE:
-		return_code = current_handler->response(msg->buffer, le32toh(msg->buffer_length));
+		if (verbose) {
+			printf("  command_id: %04X\n", le32toh(msg->command_id));
+			printf("  status_code: %04X\n", le32toh(msg->status_code));
+		}
+		if (msg->status_code && !msg->buffer_length)
+			return_code = -le32toh(msg->status_code);
+		else
+			return_code = current_handler->response(msg->buffer, le32toh(msg->buffer_length));
 		if (return_code < 0)
 			no_close = 0;
 		mbim_send_close_msg();
