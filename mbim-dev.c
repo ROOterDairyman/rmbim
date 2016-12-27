@@ -12,6 +12,8 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/usb/cdc-wdm.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -25,7 +27,8 @@
 
 #include "mbim.h"
 
-uint8_t mbim_buffer[MBIM_BUFFER_SIZE];
+size_t mbim_bufsize = 0;
+uint8_t *mbim_buffer = NULL;
 static struct uloop_fd mbim_fd;
 static uint32_t expected;
 int no_close;
@@ -33,7 +36,7 @@ int no_close;
 static void mbim_msg_tout_cb(struct uloop_timeout *t)
 {
 	fprintf(stderr, "ERROR: mbim message timeout\n");
-	uloop_end();
+	mbim_end();
 }
 
 static struct uloop_timeout tout = {
@@ -46,7 +49,7 @@ mbim_send(void)
 	struct mbim_message_header *hdr = (struct mbim_message_header *) mbim_buffer;
 	int ret = 0;
 
-	if (le32toh(hdr->length) > MBIM_BUFFER_SIZE) {
+	if (le32toh(hdr->length) > mbim_bufsize) {
 		fprintf(stderr, "message too big %d\n", le32toh(hdr->length));
 		return -1;
 	}
@@ -74,7 +77,7 @@ mbim_send(void)
 static void
 mbim_recv(struct uloop_fd *u, unsigned int events)
 {
-	ssize_t cnt = read(u->fd, mbim_buffer, MBIM_BUFFER_SIZE);
+	ssize_t cnt = read(u->fd, mbim_buffer, mbim_bufsize);
 	struct mbim_message_header *hdr = (struct mbim_message_header *) mbim_buffer;
 	struct command_done_message *msg = (struct command_done_message *) (hdr + 1);
 	int i;
@@ -118,7 +121,7 @@ mbim_recv(struct uloop_fd *u, unsigned int events)
 		mbim_send_close_msg();
 		break;
 	case MBIM_MESSAGE_TYPE_CLOSE_DONE:
-		uloop_end();
+		mbim_end();
 		break;
 	case MBIM_MESSAGE_TYPE_FUNCTION_ERROR:
 		no_close = 0;
@@ -131,11 +134,31 @@ mbim_recv(struct uloop_fd *u, unsigned int events)
 void
 mbim_open(const char *path)
 {
+	__u16 max;
+	int rc;
+
 	mbim_fd.cb = mbim_recv;
 	mbim_fd.fd = open(path, O_RDWR);
 	if (mbim_fd.fd < 1) {
 		perror("open failed: ");
 		exit(-1);
 	}
+	rc = ioctl(mbim_fd.fd, IOCTL_WDM_MAX_COMMAND, &max);
+	if (!rc)
+		mbim_bufsize = max;
+	else
+		mbim_bufsize = 512;
+	mbim_buffer = malloc(mbim_bufsize);
 	uloop_fd_add(&mbim_fd, ULOOP_READ);
+}
+
+void
+mbim_end(void)
+{
+	if (mbim_buffer) {
+		free(mbim_buffer);
+		mbim_bufsize = 0;
+		mbim_buffer = NULL;
+	}
+	uloop_end();
 }

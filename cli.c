@@ -152,7 +152,7 @@ mbim_subscriber_response(void *buffer, int len)
 {
 	struct mbim_basic_connect_subscriber_ready_status_r *state = (struct mbim_basic_connect_subscriber_ready_status_r *) buffer;
 	char *subscriberid, *simiccid;
-//	int nr;
+	int nr;
 
 	if (len < sizeof(struct mbim_basic_connect_subscriber_ready_status_r)) {
 		fprintf(stderr, "message not long enough\n");
@@ -168,12 +168,11 @@ mbim_subscriber_response(void *buffer, int len)
 	printf("  subscriberid: %s\n", subscriberid);
 	if (le32toh(state->readyinfo) & MBIM_READY_INFO_FLAG_PROTECT_UNIQUE_ID)
 		printf("  dont display subscriberID: 1\n");
-	printf("  telenumcnt: %d\n", le32toh(state->telephonenumberscount));
 	for (nr = 0; nr < le32toh(state->telephonenumberscount); nr++) {
 		struct mbim_string *str = (void *)&state->telephonenumbers + (nr * sizeof(struct mbim_string));
 		char *number = mbim_get_string(str, buffer);
 		printf("  number: %s\n", number);
-	} 
+	}
 
 	if (MBIM_SUBSCRIBER_READY_STATE_INITIALIZED == le32toh(state->readystate))
 		return 0;
@@ -195,8 +194,8 @@ mbim_attach_response(void *buffer, int len)
 		mbim_enum_string(mbim_nw_error_values, le32toh(ps->nwerror)));
 	printf("  packetservicestate: %04X - %s\n", le32toh(ps->packetservicestate),
 		mbim_enum_string(mbim_packet_service_state_values, le32toh(ps->packetservicestate)));
-	printf("  uplinkspeed: %"PRIu64"\n", le64toh(ps->uplinkspeed));
-	printf("  downlinkspeed: %"PRIu64"\n", le64toh(ps->downlinkspeed));
+	printf("  uplinkspeed: %"PRIu64"\n", (uint64_t) le64toh(ps->uplinkspeed));
+	printf("  downlinkspeed: %"PRIu64"\n", (uint64_t) le64toh(ps->downlinkspeed));
 	printf("  highestavailabledataclass: %04X\n", le32toh(ps->highestavailabledataclass));
 
 	if (MBIM_PACKET_SERVICE_STATE_ATTACHED == le32toh(ps->packetservicestate))
@@ -238,19 +237,18 @@ mbim_config_response(void *buffer, int len)
 	char out[40];
 	int i;
 	uint32_t offset;
-printf("    start config response\n");
+
 	if (len < sizeof(struct mbim_basic_connect_ip_configuration_r)) {
 		fprintf(stderr, "message not long enough\n");
 		return -1;
 	}
-printf("    1\n");
+
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_ADDRESS)
 		for (i = 0; i < le32toh(ip->ipv4addresscount); i++) {
 			offset = le32toh(ip->ipv4address) + (i * 4);
 			mbim_get_ipv4(buffer, out, 4 + offset);
 			printf("  ipv4address: %s/%d\n", out, mbim_get_int(buffer, offset));
 		}
-printf("    2\n");
 	if (le32toh(ip->ipv4configurationavailable) & MBIM_IP_CONFIGURATION_AVAILABLE_FLAG_DNS) {
 		mbim_get_ipv4(buffer, out, le32toh(ip->ipv4gateway));
 		printf("  ipv4gateway: %s\n", out);
@@ -281,6 +279,20 @@ printf("    2\n");
 			printf("  ipv6dnsserver: %s\n", out);
 		}
 
+	return 0;
+}
+
+static int
+mbim_radio_response(void *buffer, int len)
+{
+	struct mbim_basic_connect_radio_state_r *r = (struct mbim_basic_connect_radio_state_r *) buffer;
+
+	if (len < sizeof(struct mbim_basic_connect_radio_state_r)) {
+		fprintf(stderr, "message not long enough\n");
+		return -1;
+	}
+	printf("  hwradiostate: %s\n", r->hwradiostate ? "on" : "off");
+	printf("  swradiostate: %s\n", r->swradiostate ? "on" : "off");
 	return 0;
 }
 
@@ -458,6 +470,27 @@ mbim_config_request(void)
 	return mbim_send_command_msg();
 }
 
+static int
+mbim_radio_request(void)
+{
+	if (_argc > 0) {
+		struct mbim_basic_connect_radio_state_s *rs =
+			(struct mbim_basic_connect_radio_state_s *) mbim_setup_command_msg(basic_connect,
+			        MBIM_MESSAGE_COMMAND_TYPE_SET, MBIM_CMD_BASIC_CONNECT_RADIO_STATE,
+			        sizeof(struct mbim_basic_connect_radio_state_r));
+
+		if (!strcmp(_argv[0], "off"))
+			rs->radiostate = htole32(MBIM_RADIO_SWITCH_STATE_OFF);
+		else
+			rs->radiostate = htole32(MBIM_RADIO_SWITCH_STATE_ON);
+	} else {
+		mbim_setup_command_msg(basic_connect,
+			MBIM_MESSAGE_COMMAND_TYPE_QUERY, MBIM_CMD_BASIC_CONNECT_RADIO_STATE,
+			sizeof(struct mbim_basic_connect_radio_state_r));
+	}
+	return mbim_send_command_msg();
+}
+
 static struct mbim_handler handlers[] = {
 	{ "caps", 0, mbim_device_caps_request, mbim_device_caps_response },
 	{ "pinstate", 0, mbim_pin_state_request, mbim_pin_state_response },
@@ -469,13 +502,14 @@ static struct mbim_handler handlers[] = {
 	{ "connect", 0, mbim_connect_request, mbim_connect_response },
 	{ "disconnect", 0, mbim_disconnect_request, mbim_connect_response },
 	{ "config", 0, mbim_config_request, mbim_config_response },
+	{ "radio", 0, mbim_radio_request, mbim_radio_response },
 	{ "signal", 0, mbim_signal_request, mbim_signal_response },
 };
 
 static int
 usage(void)
 {
-	fprintf(stderr, "Usage: mbim <caps|pinstate|unlock|connect|disconnect> [options]\n"
+	fprintf(stderr, "Usage: umbim <caps|pinstate|unlock|registration|subscriber|attach|detach|connect|disconnect|config|radio> [options]\n"
 		"Options:\n"
 		"    -d <device>	the device (/dev/cdc-wdmX)\n"
 		"    -t <transaction>	the transaction id\n"
