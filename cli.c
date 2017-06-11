@@ -421,6 +421,19 @@ mbim_signal_request(void)
 	return mbim_send_command_msg();
 }
 
+static int
+mbim_status_request(void)
+{
+	struct mbim_basic_connect_connect_q *c =
+		(struct mbim_basic_connect_connect_q *) mbim_setup_command_msg(basic_connect,
+			MBIM_MESSAGE_COMMAND_TYPE_QUERY, MBIM_CMD_BASIC_CONNECT_CONNECT,
+			sizeof(struct mbim_basic_connect_connect_q));
+
+	memcpy(c->contexttype, uuid_context_type_internet, 16);
+
+	return mbim_send_command_msg();
+}
+
 static char*
 mbim_pin_sanitize(char *pin)
 {
@@ -504,12 +517,13 @@ static struct mbim_handler handlers[] = {
 	{ "config", 0, mbim_config_request, mbim_config_response },
 	{ "radio", 0, mbim_radio_request, mbim_radio_response },
 	{ "signal", 0, mbim_signal_request, mbim_signal_response },
+	{ "status", 0, mbim_status_request, mbim_connect_response },
 };
 
 static int
 usage(void)
 {
-	fprintf(stderr, "Usage: umbim <caps|pinstate|unlock|registration|subscriber|attach|detach|connect|disconnect|config|radio> [options]\n"
+	fprintf(stderr, "Usage: umbim <caps|pinstate|unlock|registration|subscriber|attach|detach|connect|disconnect|config|radio|signal|status> [options]\n"
 		"Options:\n"
 		"    -d <device>	the device (/dev/cdc-wdmX)\n"
 		"    -t <transaction>	the transaction id\n"
